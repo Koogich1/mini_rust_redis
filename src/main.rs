@@ -2,9 +2,17 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::BufReader;
 use std::io::{self, BufRead, Write};
+use std::time::{Duration, Instant};
+
+#[derive(Debug)]
+struct CasheEntity {
+    value: String,
+    created_at: Instant,
+    ttl: Option<Duration>,
+}
 
 struct Cache {
-    data: HashMap<String, String>,
+    data: HashMap<String, CasheEntity>,
 }
 
 impl Cache {
@@ -14,12 +22,32 @@ impl Cache {
         }
     }
 
-    fn set(&mut self, key: String, value: String) {
-        self.data.insert(key, value);
+    fn set(&mut self, key: String, value: String, ttl: Option<Duration>) {
+        let entity = CasheEntity {
+            value,
+            created_at: Instant::now(),
+            ttl,
+        };
+        self.data.insert(key, entity);
     }
 
-    fn get(&self, key: &str) -> Option<&String> {
-        self.data.get(key)
+    fn get(&mut self, key: &str) -> Option<&String> {
+        let expired = if let Some(entity) = self.data.get(key) {
+            if let Some(ttl) = entity.ttl {
+                Instant::now() - entity.created_at >= ttl
+            } else {
+                false
+            }
+        } else {
+            return None;
+        };
+
+        if expired {
+            self.data.remove(key);
+            None
+        } else {
+            self.data.get(key).map(|entity| &entity.value)
+        }
     }
 
     fn delete(&mut self, key: &str) -> bool {
@@ -29,22 +57,19 @@ impl Cache {
     fn save(&self, path: &str) -> io::Result<()> {
         let mut file = fs::File::create(path)?;
         for (key, value) in &self.data {
-            writeln!(file, "{}={}", key, value)?;
+            writeln!(file, "{}={:#?}", key, value)?;
         }
         Ok(())
     }
 
-    fn load(&mut self, path: &str) -> io::Result<()> {
-        let file = fs::File::open(path)?;
-        let reader = BufReader::new(file);
-        for line in reader.lines() {
-            let line = line?;
-            if let Some((key, value)) = line.split_once('=') {
-                self.data.insert(key.to_string(), value.to_string());
-            }
-        }
-        Ok(())
-    }
+    // fn load(&mut self, path: &str) -> io::Result<()> {
+    //     let file = fs::File::open(path)?;
+    //     let reader = BufReader::new(file);
+    //     for line in reader.lines() {
+    //         let line = line?;
+    //     }
+    //     Ok(())
+    // }
     fn len(&self) -> usize {
         self.data.len()
     }
@@ -59,7 +84,6 @@ fn main() {
     println!("🦀 Mini-Redis ready!");
     println!("Commands: SET <key> <value>, GET <key>, DEL <key>, SAVE, LOAD, EXIT");
 
-    // REPL: Read-Eval-Print Loop
     loop {
         print!("> ");
         if let Err(e) = stdout.flush() {
@@ -74,19 +98,29 @@ fn main() {
             continue;
         }
 
-        // Разбиваем команду на части
         let parts: Vec<&str> = input.split_whitespace().collect();
         let command = parts[0].to_uppercase();
 
         match command.as_str() {
             "SET" => {
-                if parts.len() != 3 {
-                    println!("Usage: SET <key> <value>");
+                if parts.len() != 3 && parts.len() != 4 {
+                    println!("Usage: SET <key> <value> [ttl_in_secs]");
                     continue;
                 }
                 let key = parts[1].to_string();
                 let value = parts[2].to_string();
-                cache.set(key, value);
+                let ttl = if parts.len() == 4 {
+                    match parts[3].parse::<u64>() {
+                        Ok(secs) => Some(Duration::from_secs(secs)),
+                        Err(_) => {
+                            println!("Error: TTL must be a valid positive number");
+                            continue;
+                        }
+                    }
+                } else {
+                    None
+                };
+                cache.set(key, value, ttl);
                 println!("OK");
             }
             "GET" => {
@@ -108,10 +142,10 @@ fn main() {
                 Ok(()) => println!("Saved {} keys to {}", cache.len(), DB_PATH),
                 Err(e) => eprintln!("Save error: {}", e),
             },
-            "LOAD" => match cache.load(DB_PATH) {
-                Ok(()) => println!("Loaded {} keys from {}", cache.len(), DB_PATH),
-                Err(e) => eprintln!("Load error: {}", e),
-            },
+            // "LOAD" => match cache.load(DB_PATH) {
+            //     Ok(()) => println!("Loaded {} keys from {}", cache.len(), DB_PATH),
+            //     Err(e) => eprintln!("Load error: {}", e),
+            // },
             "EXIT" => {
                 println!("Bye!");
                 break;

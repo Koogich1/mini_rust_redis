@@ -1,3 +1,20 @@
-2=apple
-1=mango
-3=banana
+2=CasheEntity {
+    value: "mango",
+    created_at: Instant {
+        tv_sec: 18518,
+        tv_nsec: 111346250,
+    },
+    ttl: Some(
+        300s,
+    ),
+}
+1=CasheEntity {
+    value: "mango",
+    created_at: Instant {
+        tv_sec: 18511,
+        tv_nsec: 241134875,
+    },
+    ttl: Some(
+        100s,
+    ),
+}
