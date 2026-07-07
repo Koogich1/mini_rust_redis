@@ -1,0 +1,3 @@
+2=apple
+1=mango
+3=banana
