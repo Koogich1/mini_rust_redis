@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::fs;
 // use std::io::BufReader;
 use std::io::{self, BufRead, Write};
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 
 #[derive(Debug)]
 struct CasheEntity {
     value: String,
-    created_at: Instant,
+    created_at: SystemTime,
     ttl: Option<Duration>,
 }
 
@@ -25,7 +25,7 @@ impl Cache {
     fn set(&mut self, key: String, value: String, ttl: Option<Duration>) {
         let entity = CasheEntity {
             value,
-            created_at: Instant::now(),
+            created_at: SystemTime::now(),
             ttl,
         };
         self.data.insert(key, entity);
@@ -34,7 +34,10 @@ impl Cache {
     fn get(&mut self, key: &str) -> Option<&String> {
         let expired = if let Some(entity) = self.data.get(key) {
             if let Some(ttl) = entity.ttl {
-                Instant::now() - entity.created_at >= ttl
+                SystemTime::now()
+                    .duration_since(entity.created_at)
+                    .unwrap_or_default()
+                    >= ttl
             } else {
                 false
             }
