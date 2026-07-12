@@ -131,11 +131,10 @@ impl Cache {
             let created_at = SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp);
             let ttl = if ttl_secs > 0 { Some(Duration::from_secs(ttl_secs)) } else { None };
 
-            // Проверяем, не протух ли ключ при загрузке
             if let Some(ttl_duration) = ttl {
                 if let Ok(elapsed) = SystemTime::now().duration_since(created_at) {
                     if elapsed >= ttl_duration {
-                        continue; // Пропускаем протухшие ключи
+                        continue;
                     }
                 }
             }
