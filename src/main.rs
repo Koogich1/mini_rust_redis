@@ -79,8 +79,15 @@ impl Cache {
         }
     }
 
-    fn delete(&mut self, key: &str) -> bool {
-        self.data.remove(key).is_some()
+    fn delete(&mut self, key: &str) -> Result<(), CacheError> {
+        let entiry = self.data.get(key);
+        if entiry.is_none() {
+            Err(CacheError::KeyNotFound)
+        }
+        else {
+            self.data.remove(key);
+            Ok(())
+        }
     }
 
     fn save(&self, path: &str) -> Result<(), CacheError> {
@@ -182,12 +189,16 @@ fn main() {
                 }
             }
             "DEL" => {
-                let key = parts[1].to_string();
-                if parts.len() != 2 {
+                if parts.len() < 2 {
                     println!("Usage: DEL <key>");
                     continue;
                 }
-                cache.delete(&key);
+                let key = parts[1].to_string();
+                match cache.delete(&key) {
+                    Ok(()) => println!("Deleted key: {}", key),
+                    Err(CacheError::KeyNotFound) => println!("(key not found)"),
+                    Err(e) => eprintln!("Error: {}", e),
+                }
             }
             "SAVE" => {
                 match cache.save(DB_PATH) {
