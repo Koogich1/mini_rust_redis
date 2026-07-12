@@ -92,8 +92,14 @@ impl Cache {
 
     fn save(&self, path: &str) -> Result<(), CacheError> {
         let mut file = fs::File::create(path).map_err(CacheError::from)?;
-        for (key, value) in &self.data {
-            writeln!(file, "{}={:#?}", key, value).map_err(CacheError::from)?;
+        for (key, entity) in &self.data {
+            let timestamp = entity.created_at
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let ttl_secs = entity.ttl.map(|t| t.as_secs()).unwrap_or(0);
+            writeln!(file, "{}|{}|{}|{}", key, entity.value, timestamp, ttl_secs)
+                .map_err(CacheError::from)?;
         }
         Ok(())
     }
@@ -110,7 +116,32 @@ impl Cache {
 
         for line in lines {
             let line = line.map_err(CacheError::Io)?;
-            println!("{}", line);
+            let parts: Vec<&str> = line.split('|').collect();
+            if parts.len() != 4 {
+                return Err(CacheError::ParseError(format!("Invalid line: {}", line)));
+            }
+
+            let key = parts[0].to_string();
+            let value = parts[1].to_string();
+            let timestamp = parts[2].parse::<u64>()
+                .map_err(|_| CacheError::ParseError(format!("Invalid timestamp: {}", parts[2])))?;
+            let ttl_secs = parts[3].parse::<u64>()
+                .map_err(|_| CacheError::ParseError(format!("Invalid TTL: {}", parts[3])))?;
+
+            let created_at = SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp);
+            let ttl = if ttl_secs > 0 { Some(Duration::from_secs(ttl_secs)) } else { None };
+
+            // Проверяем, не протух ли ключ при загрузке
+            if let Some(ttl_duration) = ttl {
+                if let Ok(elapsed) = SystemTime::now().duration_since(created_at) {
+                    if elapsed >= ttl_duration {
+                        continue; // Пропускаем протухшие ключи
+                    }
+                }
+            }
+
+            let entity = CasheEntity { value, created_at, ttl };
+            self.data.insert(key, entity);
         }
         Ok(())
     }
